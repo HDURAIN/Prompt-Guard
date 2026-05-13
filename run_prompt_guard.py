@@ -23,15 +23,18 @@ def normalize_label(label: str) -> str:
 def malicious_probability(logits: torch.Tensor, id2label: dict[int, str]) -> tuple[str, float]:
     probs = torch.softmax(logits, dim=-1)[0]
     labels = {idx: label.lower() for idx, label in id2label.items()}
-    malicious_idx = next(
-        (idx for idx, label in labels.items() if "malicious" in label or "unsafe" in label),
-        int(torch.argmax(probs).item()),
-    )
+    malicious_idx = next((idx for idx, label in labels.items() if "malicious" in label or "unsafe" in label), None)
+    if malicious_idx is None:
+        malicious_idx = 1 if probs.numel() == 2 else int(torch.argmax(probs).item())
     predicted_idx = int(torch.argmax(probs).item())
     predicted_label = labels.get(predicted_idx, str(predicted_idx))
     if "malicious" in predicted_label or "unsafe" in predicted_label:
         predicted_label = "malicious"
     elif "benign" in predicted_label or "safe" in predicted_label:
+        predicted_label = "benign"
+    elif predicted_idx == malicious_idx:
+        predicted_label = "malicious"
+    else:
         predicted_label = "benign"
     return predicted_label, float(probs[malicious_idx].item())
 
