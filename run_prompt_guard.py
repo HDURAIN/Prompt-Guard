@@ -39,10 +39,20 @@ def malicious_probability(logits: torch.Tensor, id2label: dict[int, str]) -> tup
     return predicted_label, float(probs[malicious_idx].item())
 
 
-def run(input_path: Path, output_path: Path, model_id: str, batch_size: int, max_length: int, token: str | None) -> None:
+def run(
+    input_path: Path,
+    output_path: Path,
+    model_id: str,
+    batch_size: int,
+    max_length: int,
+    token: str | None,
+    limit: int | None,
+) -> None:
     data = pd.read_csv(input_path)
     if TEXT_COLUMN not in data.columns:
         raise ValueError(f"Input CSV must contain a '{TEXT_COLUMN}' column.")
+    if limit is not None:
+        data = data.head(limit).copy()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     try:
@@ -51,7 +61,7 @@ def run(input_path: Path, output_path: Path, model_id: str, batch_size: int, max
     except OSError as exc:
         message = (
             f"Could not load '{model_id}'. If this is a gated Hugging Face model, "
-            "request access on the model page and run `huggingface-cli login`, "
+            "request access on the model page and run `hf auth login`, "
             "or pass a token with `--token`."
         )
         raise RuntimeError(message) from exc
@@ -98,9 +108,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--token", default=None, help="Optional Hugging Face token for gated models.")
+    parser.add_argument("--limit", type=int, default=None, help="Optional row limit for smoke tests.")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run(args.input, args.output, args.model_id, args.batch_size, args.max_length, args.token)
+    run(args.input, args.output, args.model_id, args.batch_size, args.max_length, args.token, args.limit)

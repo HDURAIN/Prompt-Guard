@@ -1,24 +1,31 @@
 # Prompt Safety Evaluation
 
-Local-first evaluation scaffold for Meta Llama Prompt Guard 2 22M, with a compatible placeholder runner for WildGuard migration on a cloud GPU server.
+Evaluation scaffold for two safety classifiers:
+
+- `meta-llama/Llama-Prompt-Guard-2-22M`: small request classifier, suitable for local or cloud CPU/GPU smoke tests.
+- `allenai/wildguard`: larger generative safety classifier, intended for a cloud GPU server.
+
+Both runners write the same output fields so the same `evaluate.py` script can be reused.
 
 ## Data Format
 
-Put CSV files in `data/`. Each file should include:
+Put CSV files in `data/`. Required columns:
 
-- `prompt`: input text to classify
-- `label`: ground-truth harmful-request label, one of `no`, `yes`, `benign`, `malicious`, `0`, or `1`
-- `response`: optional assistant response text, used by WildGuard for refusal and harmful-response classification
+- `prompt`: user request text
+- `label`: ground-truth harmful-request label, one of `yes`, `no`, `malicious`, `benign`, `1`, or `0`
 
-Optional columns such as `id`, `source`, and `category` are preserved in prediction outputs.
+Optional columns:
 
-Prediction files use the shared fields:
+- `response`: assistant response text, used by WildGuard for `refusal` and `harmful_response`
+- any metadata columns, such as `id`, `source`, or `category`
 
-- `harmful_request`: whether the user request is harmful, `yes` or `no`
-- `refusal`: whether the assistant response is a refusal, `yes`, `no`, or `unknown`
-- `harmful_response`: whether the assistant response is harmful, `yes`, `no`, or `unknown`
+Prediction outputs include:
 
-Prompt Guard only classifies the request, so it writes `unknown` for `refusal` and `harmful_response`.
+- `harmful_request`: `yes` or `no`
+- `refusal`: `yes`, `no`, or `unknown`
+- `harmful_response`: `yes`, `no`, or `unknown`
+
+Prompt Guard only classifies the user request, so it writes `unknown` for `refusal` and `harmful_response`.
 
 ## Local Setup
 
@@ -27,30 +34,32 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Log in to Hugging Face before downloading gated or agreement-gated models:
-
-```powershell
 hf auth login
 ```
 
-## Run Prompt Guard
+## Prompt Guard
+
+Smoke test:
 
 ```powershell
-python run_prompt_guard.py --input data/your_dataset.csv --output outputs/prompt_guard_predictions.csv
-python evaluate.py --input outputs/prompt_guard_predictions.csv --output outputs/metrics.json
+python run_prompt_guard.py --input data/prompt_guard_demo.csv --output outputs/prompt_guard_demo_predictions.csv --batch-size 2
+python evaluate.py --input outputs/prompt_guard_demo_predictions.csv --output outputs/prompt_guard_demo_metrics.json
 ```
 
-## WildGuard
+Full dataset:
 
-WildGuard is intended for the cloud GPU server. The code is already prepared for the same CSV format.
+```powershell
+python run_prompt_guard.py --input data/your_dataset.csv --output outputs/prompt_guard_predictions.csv --batch-size 16
+python evaluate.py --input outputs/prompt_guard_predictions.csv --output outputs/prompt_guard_metrics.json
+```
 
-On the cloud server:
+## Cloud Server Setup
+
+Clone and install:
 
 ```bash
-git clone <your-repo-url>
-cd <repo-name>
+git clone git@github.com:HDURAIN/Prompt-Guard.git
+cd Prompt-Guard
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -58,7 +67,25 @@ pip install -r requirements-cloud.txt
 hf auth login
 ```
 
-Run a small smoke test first:
+If SSH is not configured on the server, clone with HTTPS instead:
+
+```bash
+git clone https://github.com/HDURAIN/Prompt-Guard.git
+```
+
+## Cloud Smoke Tests
+
+Prompt Guard:
+
+```bash
+python run_prompt_guard.py \
+  --input data/prompt_guard_demo.csv \
+  --output outputs/prompt_guard_cloud_smoke.csv \
+  --batch-size 2 \
+  --limit 5
+```
+
+WildGuard:
 
 ```bash
 python run_wildguard.py \
@@ -68,7 +95,7 @@ python run_wildguard.py \
   --limit 5
 ```
 
-Then run the full dataset:
+## WildGuard Full Run
 
 ```bash
 python run_wildguard.py \
@@ -77,12 +104,26 @@ python run_wildguard.py \
   --batch-size 4
 ```
 
-Evaluate:
+For smaller GPUs, reduce `--batch-size` to `1`. If memory is still insufficient, reduce `--max-length`.
+
+## Evaluation
+
+Prompt Guard and WildGuard harmful-request evaluation:
 
 ```bash
+python evaluate.py --input outputs/prompt_guard_predictions.csv --target harmful_request --output outputs/prompt_guard_metrics.json
 python evaluate.py --input outputs/wildguard_predictions.csv --target harmful_request --output outputs/wildguard_harmful_request_metrics.json
+```
+
+WildGuard can also evaluate response-level fields if your CSV has matching labels such as `refusal_label` or `harmful_response_label`:
+
+```bash
 python evaluate.py --input outputs/wildguard_predictions.csv --target refusal --output outputs/wildguard_refusal_metrics.json
 python evaluate.py --input outputs/wildguard_predictions.csv --target harmful_response --output outputs/wildguard_harmful_response_metrics.json
 ```
 
-For smaller GPUs, reduce `--batch-size` to `1` and, if needed, reduce `--max-length`.
+## Notes
+
+- Both model repositories require Hugging Face login and access/terms acceptance.
+- Generated prediction and metric files are ignored by Git.
+- Keep large datasets, model weights, and tokens out of the repository.
