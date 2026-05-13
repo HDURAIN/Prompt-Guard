@@ -20,6 +20,7 @@ checkpoints/
 *.pth
 
 # Generated outputs
+outputs/*.csv
 outputs/*_predictions.csv
 outputs/*_smoke.csv
 outputs/*_metrics.json
